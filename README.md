@@ -40,6 +40,22 @@ python wp_plugin_discover.py -s "contact form" "booking" -n 24 --pages 2 --scan
 Outputs JSON, one entry per plugin: whether it registers `wp_ajax_nopriv_*`,
 how many raw `$wpdb->query/get_results/...` calls it has, and the matching lines.
 
+## Function-body audit
+
+The file-level pass over-counts: most `nopriv_` handlers check
+`current_user_can()` / nonce inside, and most raw SQL is wrapped in
+`$wpdb->prepare()` on another line. `wp_unauth_audit.py` does a function-body
+pass instead — it extracts each `wp_ajax_nopriv_*` handler's body (brace-matched,
+strings/comments stripped) and flags only handlers that have user input + a raw
+SQL call AND no permission guard in the body.
+
+```bash
+python wp_unauth_audit.py -p /path/to/plugin-folder --only-interesting
+```
+
+`wp_batch_audit.py` runs that audit across a JSON list of `{slug, version}`
+(discover output) and prints only plugins with at least one flagged handler.
+
 ## Background
 
 This scanner is a tool I use in my own WordPress plugin security audits to quickly locate code points that need manual review. Combined with manual review it helps find real issues efficiently — most of the CVEs I report were first triaged with this script.

@@ -44,9 +44,10 @@ def api_get(params):
 
 
 def query_plugins(search, per_page, page):
+    # NOTE: do NOT pass request[browse] here — when both browse and search are
+    # present the API ignores search and returns the browse list. search-only.
     return api_get({
         "action": "query_plugins",
-        "request[browse]": "search",
         "request[search]": search,
         "request[per_page]": per_page,
         "request[page]": page,

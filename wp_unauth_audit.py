@@ -190,9 +190,25 @@ def analyze_handler(body):
 
     # XSS: find variables assigned directly from user input (no escaping fn),
     # then check whether any of them is echoed raw somewhere in the body.
+    # Two false-positive guards (note: body is string/comment-stripped, so a
+    # quoted function name like 'sanitize_text_field' appears as blanks):
+    #   - $v = get_option(...)            : option values are stored data, not
+    #     live user input; even if $_POST appears deep inside the key argument
+    #     after sanitize_text_field, the variable holds DB content, not a raw
+    #     echo sink of request data.
+    #   - $v = array_map( <blank>, $_POST[..] ) : the first arg was a quoted
+    #     callable (stripped to blanks) applied to every element of the request
+    #     array — the whole array is sanitized at the door; downstream echoes
+    #     are safe.
     tainted_vars = set()
     for m in USER_INPUT_ASSIGN_RE.finditer(body):
-        tainted_vars.add(m.group(1))
+        var = m.group(1)
+        line = m.group(0)
+        if re.search(r"get_option\s*\(", line):
+            continue
+        if re.search(r"array_map\s*\(\s+,\s*\$_(?:POST|GET|REQUEST)\s*\[", line):
+            continue
+        tainted_vars.add(var)
     xss_lines = []
     if tainted_vars:
         for ln in body.splitlines():

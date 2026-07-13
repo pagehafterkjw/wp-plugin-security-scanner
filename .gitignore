@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.omc/
+.claude/
+_*.json
+_*.log
+xss_results*.json
+xss_audit*.log
+scan-batch2*.json
+run_xss_audit.ps1

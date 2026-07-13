@@ -40,6 +40,24 @@ python wp_plugin_discover.py -s "contact form" "booking" -n 24 --pages 2 --scan
 Outputs JSON, one entry per plugin: whether it registers `wp_ajax_nopriv_*`,
 how many raw `$wpdb->query/get_results/...` calls it has, and the matching lines.
 
+### GitHub-hosted plugins
+
+The wordpress.org official repo is heavily audited (Wordfence/Patchstack scan
+it continuously, plus review pressure), so unauth SQLi/XSS there is largely
+exhausted. Independently hosted plugins on GitHub get far less security
+attention — many are commercial/portfolio plugins published in full with no
+upstream review. `gh_plugin_discover.py` targets that surface:
+
+```bash
+python gh_plugin_discover.py -n 30 --pages 3
+```
+
+It queries the GitHub Search API for small PHP repos tagged `wordpress-plugin`
+(`stars<5` ⇒ little scrutiny), downloads each tarball via codeload (free,
+does not count against the API rate limit), and emits a JSON list of repos
+that register `wp_ajax_nopriv_*` handlers — the high-signal input for the
+batch auditor. Works anonymously; set `GH_TOKEN` to lift the rate limit.
+
 ## Function-body audit
 
 The file-level pass over-counts: most `nopriv_` handlers check

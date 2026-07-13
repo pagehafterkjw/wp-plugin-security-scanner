@@ -83,9 +83,29 @@ python wp_unauth_audit.py -p /path/to/plugin-folder --only-interesting --xss
 (discover output) and prints only plugins with at least one flagged handler.
 Pass `--xss` to switch the sink.
 
+## Self-test
+
+`tests/test_audit_suite.py` runs all three auditors against an intentionally
+vulnerable fixture plugin (`tests/fixtures/vulnerable-plugin/`) and asserts
+each scanner detects the pattern it should — unauth SQLi, reflected XSS, and an
+unauthenticated (`__return_true`) REST route with tainted SQL — while a safe
+negative-control handler (absint + prepare + capability check) is NOT flagged.
+
+```bash
+python tests/test_audit_suite.py
+```
+
+Exit 0 only if every assertion holds. This is the regression baseline: any
+change to a detector that drops a real pattern or starts flagging the safe
+handler fails the test.
+
 ## Background
 
-This scanner is a tool I use in my own WordPress plugin security audits to quickly locate code points that need manual review. Combined with manual review it helps find real issues efficiently — most of the CVEs I report were first triaged with this script.
+This scanner is a tool I use in my own WordPress plugin security audits to
+quickly locate code points that need manual review. The detectors are tuned
+against real plugin source to suppress the two dominant false-positive
+classes — option-sourced variables and entry-level `array_map` sanitization —
+documented in the commit history.
 
 ## Related
 

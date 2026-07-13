@@ -21,9 +21,15 @@ DOWNLOAD = "https://downloads.wordpress.org/plugin/{slug}.{version}.zip"
 
 
 def main():
+    import argparse
+    ap = argparse.ArgumentParser(description="Batch deep-audit plugins for unauth SQLi/XSS")
+    ap.add_argument("--xss", action="store_true", help="flag XSS candidates instead of (default) sqli")
+    args = ap.parse_args()
+
     data = json.load(sys.stdin)
     flagged = []
     scanned = 0
+    sink_key = "xss_interesting" if args.xss else "interesting"
     for entry in data:
         slug = entry.get("slug")
         version = entry.get("version")
@@ -45,10 +51,9 @@ def main():
             continue
         root = os.path.join(tmp, slug)
         if not os.path.isdir(root):
-            # some zips extract without the slug dir
             root = tmp
         res = audit.audit_plugin(root)
-        hits = [r for r in res if r.get("interesting")]
+        hits = [r for r in res if r.get(sink_key)]
         if hits:
             flagged.append({"slug": slug, "version": version,
                             "active_installs": entry.get("active_installs"),
@@ -57,7 +62,7 @@ def main():
             print(f"    [+] FLAGGED: {len(hits)} handler(s)", file=sys.stderr)
 
     print(json.dumps(flagged, indent=2, ensure_ascii=False), file=sys.stdout)
-    print(f"\n[done] scanned {scanned}, flagged {len(flagged)}", file=sys.stderr)
+    print(f"\n[done] scanned {scanned}, flagged {len(flagged)} ({'xss' if args.xss else 'sqli'})", file=sys.stderr)
 
 
 if __name__ == "__main__":

@@ -154,23 +154,66 @@ GUARD_RE = re.compile(r"current_user_can\s*\(|check_ajax_referer\s*\(|wp_verify_
 INPUT_RE = re.compile(r"\$_(POST|GET|REQUEST)\b")
 SQL_RE = re.compile(r"\$wpdb->(query|get_results|get_var|get_row|get_col)\s*\(")
 
+# XSS: an assignment that pulls user input straight into a variable, e.g.
+#   $msg = $_POST['msg'];   $msg = sanitize_text_field($_POST['msg']) is safe.
+# We capture the variable name so we can check whether it is later echoed raw.
+USER_INPUT_ASSIGN_RE = re.compile(
+    r"\$(\w+)\s*=\s*"
+    r"(?!(?:absint|intval|sanitize_text_field|sanitize_email|sanitize_key|"
+    r"sanitize_title|sanitize_file_name|wp_kses|wp_kses_post|esc_html|"
+    r"esc_attr|esc_url|esc_textarea|esc_js)\s*\()"
+    r".*?\$_(POST|GET|REQUEST)\s*\["
+)
+ESCAPE_RE = re.compile(
+    r"\b(absint|intval|sanitize_text_field|sanitize_email|sanitize_key|"
+    r"sanitize_title|wp_kses|wp_kses_post|esc_html|esc_attr|esc_url|"
+    r"esc_textarea|esc_js)\s*\("
+)
+# raw output of a variable: an echo/print line that mentions a variable at all.
+# echo $var / echo '<div>'.$var / echo "text $var" / print $var all count.
+# wp_send_json($var) is NOT an XSS sink (it JSON-encodes) — skip it.
+RAW_OUTPUT_RE = re.compile(r"\b(?:echo|print)\b(?!\s*_)")  # echo / print, not echo_ / print_
+
 
 def analyze_handler(body):
-    """Classify a handler body."""
+    """Classify a handler body for SQLi and XSS candidate patterns."""
     has_guard = bool(GUARD_RE.search(body))
     has_input = bool(INPUT_RE.search(body))
+
     # raw sql: per-line, exclude lines that also call prepare on the same line
     raw_sql_lines = []
     for ln in body.splitlines():
         if SQL_RE.search(ln) and "prepare" not in ln:
-            # keep the snippet, trimmed
             s = ln.strip()
             if s:
                 raw_sql_lines.append(s[:140])
+
+    # XSS: find variables assigned directly from user input (no escaping fn),
+    # then check whether any of them is echoed raw somewhere in the body.
+    tainted_vars = set()
+    for m in USER_INPUT_ASSIGN_RE.finditer(body):
+        tainted_vars.add(m.group(1))
+    xss_lines = []
+    if tainted_vars:
+        for ln in body.splitlines():
+            if not RAW_OUTPUT_RE.search(ln):
+                continue
+            # does this echo/print line mention any tainted variable?
+            if not re.search(r"\$(" + "|".join(re.escape(v) for v in tainted_vars) + r")\b", ln):
+                continue
+            # is there an escape call wrapping the output on this line?
+            if not ESCAPE_RE.search(ln):
+                xss_lines.append(ln.strip()[:140])
+
     return {
         "has_guard": has_guard,
         "has_input": has_input,
         "raw_sql": raw_sql_lines,
+        "xss": xss_lines,
+        "interesting": (not has_guard)
+        and has_input
+        and (len(raw_sql_lines) > 0 or len(xss_lines) > 0),
+        "xss_interesting": (not has_guard) and has_input and len(xss_lines) > 0,
     }
 
 
@@ -229,7 +272,9 @@ def audit_plugin(root):
             "has_guard": cls["has_guard"],
             "has_input": cls["has_input"],
             "raw_sql": cls["raw_sql"],
-            "interesting": (not cls["has_guard"]) and cls["has_input"] and len(cls["raw_sql"]) > 0,
+            "xss": cls["xss"],
+            "interesting": cls["interesting"],
+            "xss_interesting": cls["xss_interesting"],
         })
     return results
 
@@ -238,6 +283,7 @@ def main():
     p = argparse.ArgumentParser(description="Audit unauthenticated AJAX handlers in a WordPress plugin")
     p.add_argument("-p", "--path", required=True, help="plugin directory (extracted)")
     p.add_argument("--only-interesting", action="store_true", help="print only flagged handlers")
+    p.add_argument("--xss", action="store_true", help="flag XSS candidates (raw echo of unescaped user input)")
     args = p.parse_args()
 
     root = args.path
@@ -247,10 +293,14 @@ def main():
 
     res = audit_plugin(root)
     if args.only_interesting:
-        res = [r for r in res if r.get("interesting")]
+        if args.xss:
+            res = [r for r in res if r.get("xss_interesting")]
+        else:
+            res = [r for r in res if r.get("interesting")]
 
-    interesting = [r for r in res if r.get("interesting")]
-    print(f"[+] {len(res)} unauth handlers, {len(interesting)} flagged (no guard + input + raw sql)", file=sys.stderr)
+    sqli_n = len([r for r in res if r.get("interesting")])
+    xss_n = len([r for r in res if r.get("xss_interesting")])
+    print(f"[+] {len(res)} unauth handlers, {sqli_n} sqli-flagged, {xss_n} xss-flagged", file=sys.stderr)
     print(json.dumps(res, indent=2, ensure_ascii=False))
 
 

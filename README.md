@@ -53,8 +53,17 @@ SQL call AND no permission guard in the body.
 python wp_unauth_audit.py -p /path/to/plugin-folder --only-interesting
 ```
 
+Pass `--xss` to flag XSS candidates instead: handlers with no permission guard
+that assign user input to a variable and `echo`/`print` it without an escaping
+function (`esc_html` / `esc_attr` / `wp_kses` / `sanitize_*`).
+
+```bash
+python wp_unauth_audit.py -p /path/to/plugin-folder --only-interesting --xss
+```
+
 `wp_batch_audit.py` runs that audit across a JSON list of `{slug, version}`
 (discover output) and prints only plugins with at least one flagged handler.
+Pass `--xss` to switch the sink.
 
 ## Background
 

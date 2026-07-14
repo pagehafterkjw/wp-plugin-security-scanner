@@ -109,8 +109,8 @@ documented in the commit history.
 
 ## Related
 
-- My CVE disclosures: [wp-cve-disclosures](https://github.com/LL-V/wp-cve-disclosures)
-- My nuclei detection templates: [wp-nuclei-templates](https://github.com/LL-V/wp-nuclei-templates)
+- My CVE disclosures: [wp-cve-disclosures](https://github.com/pagehafterkjw/wp-cve-disclosures)
+- My nuclei detection templates: [wp-nuclei-templates](https://github.com/pagehafterkjw/wp-nuclei-templates)
 
 ## Disclaimer
 

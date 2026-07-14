@@ -5,12 +5,18 @@
 
 ## What it detects
 
-- **SQL injection** — direct concatenation of `$_GET/$_POST/$_REQUEST` into `$wpdb->query/get_results/get_var`
+This is the file-level grep pass (`wp_plugin_scanner.py`). It flags these patterns:
+
+- **SQL injection** — direct concatenation of `$_GET/$_POST/$_REQUEST/$_COOKIE` into a `$wpdb->query/get_results/get_var/get_row` call. The pattern also matches `prepare` (which is itself safe), so any hit on `prepare` is a false positive to dismiss by hand.
+- **SQL injection (variable concatenation)** — a query line that references `$wpdb` and concatenates a variable into the string. Needs a human to confirm the variable is prepared/escaped, not raw.
 - **Unauthenticated AJAX** — `wp_ajax_nopriv_*` action registrations (callable without login, high risk)
 - **XSS** — unescaped `echo $_GET/$_POST`
-- **Deserialization** — `unserialize()` on user input
-- **Command execution** — `eval/system/exec/shell_exec` on a variable
-- **File upload** — `move_uploaded_file` without type validation
+- **Deserialization** — `unserialize()` on user input (or any `$variable` — the second match is broad on purpose, expect false positives to dismiss)
+- **Command execution** — `eval/system/exec/shell_exec/passthru/popen/proc_open` on a variable
+- **File upload** — `move_uploaded_file` (confirm whether the file type is validated)
+- **SQL backup leak** — `.sql`/`.bak` files left in the tree (confirm they are not publicly served)
+
+This pass is intentionally simple — it over-flags and a human dismisses the safe hits. The function-body pass below (`wp_unauth_audit.py`) is where the false positives get suppressed automatically.
 
 ## Usage
 
@@ -29,9 +35,11 @@ python wp_plugin_scanner.py -p /path/to/plugin-folder --risk High
 ## Discovery
 
 `wp_plugin_discover.py` pulls plugin lists from the wordpress.org plugins API,
-filters to small/niche installs (high attack surface, low scrutiny), downloads
-the source, and flags candidates where an unauthenticated AJAX handler coexists
-with a raw SQL call.
+filters to abandoned or stale plugins (last updated beyond a year threshold —
+high attack surface, low scrutiny), downloads the source, and flags candidates
+where an unauthenticated AJAX handler coexists with a raw SQL call. It uses
+its own inline patterns for that overlap rather than calling
+`wp_plugin_scanner.py`, since it only needs the two-signal filter.
 
 ```bash
 python wp_plugin_discover.py -s "contact form" "booking" -n 24 --pages 2 --scan
@@ -85,11 +93,16 @@ Pass `--xss` to switch the sink.
 
 ## Self-test
 
-`tests/test_audit_suite.py` runs all three auditors against an intentionally
-vulnerable fixture plugin (`tests/fixtures/vulnerable-plugin/`) and asserts
-each scanner detects the pattern it should — unauth SQLi, reflected XSS, and an
-unauthenticated (`__return_true`) REST route with tainted SQL — while a safe
-negative-control handler (absint + prepare + capability check) is NOT flagged.
+`tests/test_audit_suite.py` runs `wp_unauth_audit.py` and `wp_rest_audit.py`
+against an intentionally vulnerable fixture plugin
+(`tests/fixtures/vulnerable-plugin/`) and asserts each one detects the pattern
+it should — unauth SQLi, reflected XSS, and an unauthenticated
+(`__return_true`) REST route with tainted SQL — while a safe negative-control
+handler (absint + prepare + capability check) is NOT flagged.
+
+`wp_plugin_scanner.py` is the file-level grep pass and is not exercised by this
+suite; it has no state to regress, so the fixture only covers the two auditors
+that suppress false positives.
 
 ```bash
 python tests/test_audit_suite.py

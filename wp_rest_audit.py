@@ -178,7 +178,7 @@ def classify_perm(perm):
     """Return (is_unauth, note)."""
     if perm is None:
         return True, "permission_callback MISSING (defaults to edit_posts on 5.5+, review)"
-    if perm in ("__return_true", "__return_true"):
+    if perm in ("__return_true", "\\__return_true"):
         return True, "permission_callback = __return_true (public)"
     low = perm.lower().replace("\\", "").replace("::", "->")
     if "is_user_logged_in" in low:

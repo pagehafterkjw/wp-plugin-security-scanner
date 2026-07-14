@@ -3,9 +3,11 @@
 WordPress plugin discovery for security auditing.
 
 Pulls plugin lists from the wordpress.org plugins API, filters down to
-small/niche/abandoned plugins (high attack surface, low scrutiny), downloads
-their source, and runs the static scanner to flag candidates worth manual
-review.
+abandoned or stale plugins (last updated beyond a year threshold — high attack
+surface, low scrutiny), downloads their source, and greps each one for the
+overlap of an unauthenticated AJAX handler and a raw SQL call. The grep is
+inline (two patterns), not a call to wp_plugin_scanner.py, since discovery only
+needs the two-signal filter.
 
 Output is a ranked candidate list: plugins whose unauthenticated AJAX
 handlers feed user input into a raw SQL call.
